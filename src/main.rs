@@ -1,7 +1,13 @@
 use std::collections::LinkedList;
 use std::fs;
-use clap::Parser;
+use std::fs::File;
+use std::io::Write;
+use std::io::ErrorKind;
 
+use clap::Parser;
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug)]
 struct Task {
     index: u32,
     name: String,
@@ -46,6 +52,7 @@ fn print_lists(todo: &LinkedList<Task>, doing: &LinkedList<Task>, finished: &Lin
         println!("Task Due Date: {}", temp_task.due_date);
         println!("----------------------------------------------");
     }
+    println!("==============================================\n");
     println!("================ DOING LIST ==================");
     for temp_task in doing {
         println!("Index: {}", temp_task.index);
@@ -54,6 +61,7 @@ fn print_lists(todo: &LinkedList<Task>, doing: &LinkedList<Task>, finished: &Lin
         println!("Task Due Date: {}", temp_task.due_date);
         println!("----------------------------------------------");
     }
+    println!("==============================================\n");
     println!("============== FINISHED LIST =================");
     for temp_task in finished {
         println!("Index: {}", temp_task.index);
@@ -62,6 +70,7 @@ fn print_lists(todo: &LinkedList<Task>, doing: &LinkedList<Task>, finished: &Lin
         println!("Task Due Date: {}", temp_task.due_date);
         println!("----------------------------------------------");
     }
+    println!("=============================================\n");
 }
 
 fn read_write_example() {
@@ -80,15 +89,44 @@ fn read_write_example() {
     println!("With text append:\n{contents}");
 }
 
+fn read_list(file_name: &str) -> String {
+    {
+        let f: Result<File, std::io::Error> = File::create_new(&file_name);
+        match f {
+            Err(E) => println!("File already exists {}", file_name),
+            Ok(E) => println!("File was created {}", file_name),
+        }
+    }
+
+    let file_data: String = fs::read_to_string(&file_name).expect("Should have been able to read from file");
+    file_data
+}
+
+fn recreate_list(file_name: &str) -> LinkedList<Task> {
+    let empty_list: LinkedList<Task> = LinkedList::new();
+    let file_data: String = read_list(&file_name);
+    let task_list: LinkedList<Task> = serde_json::from_str(&file_data).unwrap_or_else(|_| empty_list);
+    task_list
+}
+
+fn write_list(file_name: &str, file_data: &LinkedList<Task>) {
+    let serialized: String = serde_json::to_string(&file_data).unwrap();
+    fs::write(&file_name, serialized).expect("Should have been able to write to file");
+}
+
 fn main() {
     let args: Args = Args::parse();
     let none_string: String = String::from("none");
 
-    let mut global_index: u32 = 0;
     let mut todo_list: LinkedList<Task> = LinkedList::new();
     let mut doing_list: LinkedList<Task> = LinkedList::new();
     let mut finished_list: LinkedList<Task> = LinkedList::new();
-    let null_task: Task = Task { index: 255, name: String::from("NULL"), description: String::from("NULL"), due_date: String::from("NULL") };
+    let null_task: Task = Task { index: 255, name: String::from("none"), description: String::from("none"), due_date: String::from("none") };
+
+    // Init all lists by reading the serialized data
+    todo_list = recreate_list("todo_list.txt");
+    doing_list = recreate_list("doing_list.txt");
+    finished_list = recreate_list("finished_list.txt");
 
     // Change to Vec<String> so it is possible to capture more than the description
     // $ cargo run -- -a "marcelo" "fazer compras do mes"
@@ -107,31 +145,32 @@ fn main() {
     println!("new task_finished {}", finished_t);
 
     let test_task: Task = Task  {
-                                    index: global_index,
+                                    index: 0,
                                     name: String::from("Teste da Silva"),
                                     description: String::from("Aprender tudo de Rust, Bazel e Python"),
                                     due_date: String::from("2025-04-31"),
                                 };
     todo_list.push_back(test_task);
-
-    global_index+=1;
     let new_task: Task = Task   {
-                                    index: global_index,
+                                    index: 0,
                                     name: add_t.clone(),
-                                    description: String::from("NULL"),
-                                    due_date: String::from("NULL"),
+                                    description: String::from("none"),
+                                    due_date: String::from("none"),
                                 };
     todo_list.push_back(new_task);
-
     print_lists(&todo_list, &doing_list, &finished_list);
 
     // Remove from TODO and put in DOING.
-    // If more than 2, would need to rejoin the split and old todo_list with .append, but its not the case here.
-    let mut todo_split = todo_list.split_off(1);
+    let mut todo_split: LinkedList<Task> = todo_list.split_off(1);
     doing_list.push_back(todo_split.pop_back().unwrap());
-
+    todo_list.append(&mut todo_split);
     print_lists(&todo_list, &doing_list, &finished_list);
 
-    read_write_example();
+    //read_write_example();
+
+    // Save all lists with new data, either added or removed.
+    write_list("todo_list.txt", &todo_list);
+    write_list("doing_list.txt", &doing_list);
+    write_list("finished_list.txt", &finished_list);
 
 }
