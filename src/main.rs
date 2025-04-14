@@ -1,4 +1,5 @@
 use std::collections::LinkedList;
+use std::fs;
 use clap::Parser;
 
 struct Task {
@@ -63,6 +64,22 @@ fn print_lists(todo: &LinkedList<Task>, doing: &LinkedList<Task>, finished: &Lin
     }
 }
 
+fn read_write_example() {
+    let file_path: String = String::from("./poem.txt");
+    println!("In file {file_path}");
+    let mut contents: String = fs::read_to_string(&file_path)
+        .expect("Should have been able to read the file");
+    println!("With text:\n{contents}");
+
+    let text_to_write: String = String::from("Marcelo Vieira Marchesi\n");
+    println!("Writing to the same file, appending this text: {}", text_to_write);
+    contents.push_str(text_to_write.as_str());
+    fs::write(&file_path, contents).expect("Should have been able to write to file");
+    contents = fs::read_to_string(&file_path)
+        .expect("Should have been able to read the file");
+    println!("With text append:\n{contents}");
+}
+
 fn main() {
     let args: Args = Args::parse();
     let none_string: String = String::from("none");
@@ -114,5 +131,7 @@ fn main() {
     doing_list.push_back(todo_split.pop_back().unwrap());
 
     print_lists(&todo_list, &doing_list, &finished_list);
+
+    read_write_example();
 
 }
