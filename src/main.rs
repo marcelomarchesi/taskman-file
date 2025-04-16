@@ -1,92 +1,88 @@
-use std::collections::LinkedList;
+#![feature(linked_list_remove)]
+
+use std::collections::{LinkedList, HashMap};
 use std::fs;
 use std::fs::File;
-use std::io::Write;
-use std::io::ErrorKind;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use clap::Parser;
 use serde::{Serialize, Deserialize};
 
+static GLOBAL_IDX: AtomicUsize = AtomicUsize::new(0);
+
+fn idx_inc() {
+    let mut new_idx: usize = idx_get();
+    new_idx += 1;
+    GLOBAL_IDX.store(new_idx, Ordering::Relaxed);
+}
+
+fn idx_get() -> usize {
+    GLOBAL_IDX.load(Ordering::Relaxed)
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 struct Task {
-    index: u32,
+    index: usize,
     name: String,
     description: String,
     due_date: String,
 }
 
+impl Task {
+    // This will act as a "constructor" for Task structure
+    fn new(index: usize, name: String, description: String, due_date: String) -> Self {
+        idx_inc();
+        Task {
+            index: idx_get(),
+            name: name,
+            description: description,
+            due_date: due_date,
+        }
+    }
+
+    // Regenerates index for each Task after loading task lists
+    fn update_index(&mut self) {
+        idx_inc();
+        self.index = idx_get();
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Add task with "name" "description" "due_date": -a "grocery" "buy lemon" "2025-05-05"
+    /// Add task to TODO with "name", "description", "due_date": -a "grocery" -a "buy lemon" -a "2025-05-05"
     #[arg(long, short = 'a')]
-    add_task: Option<String>,
+    add_task: Option<Vec<String>>,
 
-    /// Remove task from list, using its index.
+    /// Remove task <idx> from any list.
     #[arg(long, short = 'r')]
-    remove_task: Option<u32>,
+    remove_task: Option<usize>,
 
-    /// Show all tasks.
+    /// Show all tasks from all lists.
     #[arg(long, short = 'l', default_value_t = false)]
     list_task: bool,
 
-    /// Move task to TODO list, using its index.
-    #[arg(long, short = 't')]
-    task_todo: Option<u32>,
+    /// Move task <idx> from LIST A to LIST B.: -m "3" "doing" "finished"
+    #[arg(long, short = 'm')]
+    task_move: Option<Vec<String>>,
+}
 
-    /// Move task to DOING list, using its index.
-    #[arg(long, short = 'd')]
-    task_doing: Option<u32>,
-
-    /// Move task to FINISHED list, using its index.
-    #[arg(long, short = 'f')]
-    task_finished: Option<u32>,
+fn print_list(my_list: &LinkedList<Task>, list_name: String) {
+    println!("=================== {} LIST =====================", list_name);
+    for temp_task in my_list {
+        println!("Index: {}", temp_task.index);
+        println!("Name: {}", temp_task.name);
+        println!("Task Description: {}", temp_task.description);
+        println!("Task Due Date: {}", temp_task.due_date);
+        println!("----------------------------------------------");
+    }
+    println!("==================================================\n");
 }
 
 fn print_lists(todo: &LinkedList<Task>, doing: &LinkedList<Task>, finished: &LinkedList<Task>) {
-    println!("================ TODO LIST ===================");
-    for temp_task in todo {
-        println!("Index: {}", temp_task.index);
-        println!("Name: {}", temp_task.name);
-        println!("Task Description: {}", temp_task.description);
-        println!("Task Due Date: {}", temp_task.due_date);
-        println!("----------------------------------------------");
-    }
-    println!("==============================================\n");
-    println!("================ DOING LIST ==================");
-    for temp_task in doing {
-        println!("Index: {}", temp_task.index);
-        println!("Name: {}", temp_task.name);
-        println!("Task Description: {}", temp_task.description);
-        println!("Task Due Date: {}", temp_task.due_date);
-        println!("----------------------------------------------");
-    }
-    println!("==============================================\n");
-    println!("============== FINISHED LIST =================");
-    for temp_task in finished {
-        println!("Index: {}", temp_task.index);
-        println!("Name: {}", temp_task.name);
-        println!("Task Description: {}", temp_task.description);
-        println!("Task Due Date: {}", temp_task.due_date);
-        println!("----------------------------------------------");
-    }
-    println!("=============================================\n");
-}
-
-fn read_write_example() {
-    let file_path: String = String::from("./poem.txt");
-    println!("In file {file_path}");
-    let mut contents: String = fs::read_to_string(&file_path)
-        .expect("Should have been able to read the file");
-    println!("With text:\n{contents}");
-
-    let text_to_write: String = String::from("Marcelo Vieira Marchesi\n");
-    println!("Writing to the same file, appending this text: {}", text_to_write);
-    contents.push_str(text_to_write.as_str());
-    fs::write(&file_path, contents).expect("Should have been able to write to file");
-    contents = fs::read_to_string(&file_path)
-        .expect("Should have been able to read the file");
-    println!("With text append:\n{contents}");
+    print_list(todo, String::from("TODO"));
+    print_list(doing, String::from("DOING"));
+    print_list(finished, String::from("FINISHED"));
 }
 
 fn read_list(file_name: &str) -> String {
@@ -105,7 +101,8 @@ fn read_list(file_name: &str) -> String {
 fn recreate_list(file_name: &str) -> LinkedList<Task> {
     let empty_list: LinkedList<Task> = LinkedList::new();
     let file_data: String = read_list(&file_name);
-    let task_list: LinkedList<Task> = serde_json::from_str(&file_data).unwrap_or_else(|_| empty_list);
+    let mut task_list: LinkedList<Task> = serde_json::from_str(&file_data).unwrap_or_else(|_| empty_list);
+    task_list = recreate_index(task_list);
     task_list
 }
 
@@ -114,59 +111,103 @@ fn write_list(file_name: &str, file_data: &LinkedList<Task>) {
     fs::write(&file_name, serialized).expect("Should have been able to write to file");
 }
 
+fn recreate_index(mut task_list: LinkedList<Task>) -> LinkedList<Task> {
+    for task in task_list.iter_mut() {
+        task.update_index();
+    }
+    task_list
+}
+
+fn add_task(args: &Args, todo: &mut LinkedList<Task>) {
+    let none_string: String = String::from("none");
+    let none_vector: Vec<String> = vec![none_string.clone(), none_string.clone(), none_string.clone()];
+    let add_t: &Vec<String> = args.add_task.as_ref().unwrap_or_else(|| &none_vector);
+
+    if add_t.len() == 3 && !args.add_task.is_none() {
+        //println!("new add_task name {} desc {} due_date {}", add_t[0], add_t[1], add_t[2]);
+        let new_task: Task = Task::new(idx_get(), add_t[0].clone(), add_t[1].clone(), add_t[2].clone());
+        todo.push_back(new_task);
+        //print_list(&todo, String::from("TODO"));
+    } else {
+        println!("Not adding a task or missing values!");
+    }
+}
+
+fn list_tasks(args: &Args, todo: &LinkedList<Task>, doing: &LinkedList<Task>, finished: &LinkedList<Task>) {
+    let list_t: bool = args.list_task;
+    if list_t {
+        print_lists(&todo, &doing, &finished);
+    } else {
+        println!("Not printing lists of tasks!");
+    }
+}
+
+fn remove_task(args: &Args, todo: &mut LinkedList<Task>, doing: &mut LinkedList<Task>, finished: &mut LinkedList<Task>) {
+    let rem_t: usize = args.remove_task.unwrap_or_else(|| 0);
+    if rem_t != 0 {
+        if let Some(position) = todo.iter().position(|t| t.index == rem_t) {
+            println!("Removing task {} from TODO list", rem_t);
+            println!("{:?}", todo.iter().clone().nth(rem_t));
+            todo.remove(position);
+        }
+        if let Some(position) = doing.iter().position(|t| t.index == rem_t) {
+            println!("Removing task {} from DOING list", rem_t);
+            println!("{:?}", doing.iter().clone().nth(rem_t));
+            doing.remove(position);
+        }
+        if let Some(position) = finished.iter().position(|t| t.index == rem_t) {
+            println!("Removing task {} from FINISHED list", rem_t);
+            println!("{:?}", finished.iter().clone().nth(rem_t));
+            finished.remove(position);
+        }
+    } else {
+        println!("Not deleting any task!");
+    }
+}
+
+fn move_task(args: &Args, todo: &mut LinkedList<Task>, doing: &mut LinkedList<Task>, finished: &mut LinkedList<Task>) {
+    let none_string: String = String::from("none");
+    let none_vector: Vec<String> = vec![none_string.clone(), none_string.clone(), none_string.clone()];
+    let move_t: &Vec<String> = args.task_move.as_ref().unwrap_or_else(|| &none_vector);
+
+    if move_t.len() == 3 && !args.task_move.is_none() {
+        println!("Move some task!");
+        let idx: usize = move_t[0].clone().parse().unwrap_or(0);
+        let source_list: String = move_t[1].clone();
+        let dest_list: String = move_t[2].clone();
+
+        let mut lists: HashMap<String, &mut LinkedList<Task>> = HashMap::new();
+        lists.insert(String::from("todo"), todo);
+        lists.insert(String::from("doing"),  doing);
+        lists.insert(String::from("finished"),  finished);
+
+        if let Some(source_task) = lists.get(&source_list).unwrap().iter().position(|t| t.index == idx) {
+            println!("Moving task {} from {} list", idx, source_list);
+            let stask = lists.get(&source_list).unwrap().clone();
+            println!("{:?}", *stask);
+            let derp = lists.get(&source_list);
+
+        }
+    } else {
+        println!("Not moving any task!");
+    }
+}
+
 fn main() {
     let args: Args = Args::parse();
-    let none_string: String = String::from("none");
-
-    let mut todo_list: LinkedList<Task> = LinkedList::new();
-    let mut doing_list: LinkedList<Task> = LinkedList::new();
-    let mut finished_list: LinkedList<Task> = LinkedList::new();
-    let null_task: Task = Task { index: 255, name: String::from("none"), description: String::from("none"), due_date: String::from("none") };
+    let mut todo_list: LinkedList<Task>;
+    let mut doing_list: LinkedList<Task>;
+    let mut finished_list: LinkedList<Task>;
 
     // Init all lists by reading the serialized data
     todo_list = recreate_list("todo_list.txt");
     doing_list = recreate_list("doing_list.txt");
     finished_list = recreate_list("finished_list.txt");
 
-    // Change to Vec<String> so it is possible to capture more than the description
-    // $ cargo run -- -a "marcelo" "fazer compras do mes"
-    let add_t: &String = args.add_task.as_ref().unwrap_or_else(|| &none_string);
-    let rem_t: u32 = args.remove_task.unwrap_or_else(|| 0);
-    let list_t: bool = args.list_task;
-    let todo_t: u32 = args.task_todo.unwrap_or_else(|| 0);
-    let doing_t: u32 = args.task_doing.unwrap_or_else(|| 0);
-    let finished_t: u32 = args.task_finished.unwrap_or_else(|| 0);
-
-    println!("new add_task {}", add_t);
-    println!("new remove_task {}", rem_t);
-    println!("new list_t {}", list_t);
-    println!("new task_todo {}", todo_t);
-    println!("new task_doing {}", doing_t);
-    println!("new task_finished {}", finished_t);
-
-    let test_task: Task = Task  {
-                                    index: 0,
-                                    name: String::from("Teste da Silva"),
-                                    description: String::from("Aprender tudo de Rust, Bazel e Python"),
-                                    due_date: String::from("2025-04-31"),
-                                };
-    todo_list.push_back(test_task);
-    let new_task: Task = Task   {
-                                    index: 0,
-                                    name: add_t.clone(),
-                                    description: String::from("none"),
-                                    due_date: String::from("none"),
-                                };
-    todo_list.push_back(new_task);
-    print_lists(&todo_list, &doing_list, &finished_list);
-
-    // Remove from TODO and put in DOING.
-    let mut todo_split: LinkedList<Task> = todo_list.split_off(1);
-    doing_list.push_back(todo_split.pop_back().unwrap());
-    todo_list.append(&mut todo_split);
-    print_lists(&todo_list, &doing_list, &finished_list);
-
-    //read_write_example();
+    add_task(&args, &mut todo_list);
+    list_tasks(&args, &todo_list, &doing_list, &finished_list);
+    remove_task(&args, &mut todo_list, &mut doing_list, &mut finished_list);
+    move_task(&args, &mut todo_list, &mut doing_list, &mut finished_list);
 
     // Save all lists with new data, either added or removed.
     write_list("todo_list.txt", &todo_list);
