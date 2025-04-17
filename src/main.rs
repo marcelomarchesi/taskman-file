@@ -1,6 +1,6 @@
 #![feature(linked_list_remove)]
 
-use std::collections::{LinkedList, HashMap};
+use std::collections::{LinkedList};
 use std::fs;
 use std::fs::File;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -20,7 +20,7 @@ fn idx_get() -> usize {
     GLOBAL_IDX.load(Ordering::Relaxed)
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct Task {
     index: usize,
     name: String,
@@ -30,7 +30,7 @@ struct Task {
 
 impl Task {
     // This will act as a "constructor" for Task structure
-    fn new(index: usize, name: String, description: String, due_date: String) -> Self {
+    fn new(name: String, description: String, due_date: String) -> Self {
         idx_inc();
         Task {
             index: idx_get(),
@@ -89,8 +89,8 @@ fn read_list(file_name: &str) -> String {
     {
         let f: Result<File, std::io::Error> = File::create_new(&file_name);
         match f {
-            Err(E) => println!("File already exists {}", file_name),
-            Ok(E) => println!("File was created {}", file_name),
+            Err(_e) => println!("File already exists {}", file_name),
+            Ok(_e) => println!("File was created {}", file_name),
         }
     }
 
@@ -125,7 +125,7 @@ fn add_task(args: &Args, todo: &mut LinkedList<Task>) {
 
     if add_t.len() == 3 && !args.add_task.is_none() {
         //println!("new add_task name {} desc {} due_date {}", add_t[0], add_t[1], add_t[2]);
-        let new_task: Task = Task::new(idx_get(), add_t[0].clone(), add_t[1].clone(), add_t[2].clone());
+        let new_task: Task = Task::new(add_t[0].clone(), add_t[1].clone(), add_t[2].clone());
         todo.push_back(new_task);
         //print_list(&todo, String::from("TODO"));
     } else {
@@ -176,7 +176,35 @@ fn move_task(args: &Args, todo: &mut LinkedList<Task>, doing: &mut LinkedList<Ta
         let source_list: String = move_t[1].clone();
         let dest_list: String = move_t[2].clone();
 
-        let mut lists: HashMap<String, &mut LinkedList<Task>> = HashMap::new();
+        if source_list.contains("todo") && dest_list.contains("doing") {
+            let task_to_move = todo.clone().iter().nth(idx).unwrap().clone();
+            todo.remove(idx);
+            doing.push_back(task_to_move);
+        } else if source_list.contains("todo") && dest_list.contains("finished") {
+            let task_to_move = todo.clone().iter().nth(idx).unwrap().clone();
+            todo.remove(idx);
+            finished.push_back(task_to_move);
+        } else if source_list.contains("doing") && dest_list.contains("finished") {
+            let task_to_move = doing.clone().iter().nth(idx).unwrap().clone();
+            doing.remove(idx);
+            finished.push_back(task_to_move);
+        } else if source_list.contains("doing") && dest_list.contains("todo") {
+            let task_to_move = doing.clone().iter().nth(idx).unwrap().clone();
+            doing.remove(idx);
+            todo.push_back(task_to_move);
+        } else if source_list.contains("finished") && dest_list.contains("doing") {
+            let task_to_move = finished.clone().iter().nth(idx).unwrap().clone();
+            finished.remove(idx);
+            doing.push_back(task_to_move);
+        } else if source_list.contains("finished") && dest_list.contains("todo") {
+            let task_to_move = finished.clone().iter().nth(idx).unwrap().clone();
+            finished.remove(idx);
+            todo.push_back(task_to_move);
+        } else {
+            println!("Invalid options to move task {} {} {}", idx, source_list, dest_list);
+        }
+
+        /*let mut lists: HashMap<String, &mut LinkedList<Task>> = HashMap::new();
         lists.insert(String::from("todo"), todo);
         lists.insert(String::from("doing"),  doing);
         lists.insert(String::from("finished"),  finished);
@@ -184,10 +212,10 @@ fn move_task(args: &Args, todo: &mut LinkedList<Task>, doing: &mut LinkedList<Ta
         if let Some(source_task) = lists.get(&source_list).unwrap().iter().position(|t| t.index == idx) {
             println!("Moving task {} from {} list", idx, source_list);
             let stask = lists.get(&source_list).unwrap().clone();
-            println!("{:?}", *stask);
-            let derp = lists.get(&source_list);
-
-        }
+            println!("{:?}", *stask.iter().clone().nth(idx-1).unwrap());
+            let teste = lists.get(&dest_list).unwrap().clone();
+            (*teste).push_back((*stask).iter().clone().nth(idx-1).unwrap().clone());
+        }*/
     } else {
         println!("Not moving any task!");
     }
@@ -213,5 +241,4 @@ fn main() {
     write_list("todo_list.txt", &todo_list);
     write_list("doing_list.txt", &doing_list);
     write_list("finished_list.txt", &finished_list);
-
 }
