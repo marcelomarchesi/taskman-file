@@ -1,6 +1,6 @@
 #![feature(linked_list_remove)]
 
-use std::collections::{LinkedList};
+use std::collections::LinkedList;
 use std::fs;
 use std::fs::File;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -171,35 +171,41 @@ fn move_task(args: &Args, todo: &mut LinkedList<Task>, doing: &mut LinkedList<Ta
     let move_t: &Vec<String> = args.task_move.as_ref().unwrap_or_else(|| &none_vector);
 
     if move_t.len() == 3 && !args.task_move.is_none() {
-        println!("Move some task!");
         let idx: usize = move_t[0].clone().parse().unwrap_or(0);
         let source_list: String = move_t[1].clone();
         let dest_list: String = move_t[2].clone();
+        println!("Move some task {} {} {}", idx, source_list, dest_list);
 
         if source_list.contains("todo") && dest_list.contains("doing") {
-            let task_to_move = todo.clone().iter().nth(idx).unwrap().clone();
-            todo.remove(idx);
-            doing.push_back(task_to_move);
+            if let Some(position) = todo.iter().position(|t| t.index == idx) {
+                doing.push_back(todo.clone().iter().filter(|tt| tt.index == idx).next().unwrap().clone());
+                todo.remove(position);
+            }
         } else if source_list.contains("todo") && dest_list.contains("finished") {
-            let task_to_move = todo.clone().iter().nth(idx).unwrap().clone();
-            todo.remove(idx);
-            finished.push_back(task_to_move);
+            if let Some(position) = todo.iter().position(|t| t.index == idx) {
+                finished.push_back(todo.clone().iter().filter(|tt| tt.index == idx).next().unwrap().clone());
+                todo.remove(position);
+            }
         } else if source_list.contains("doing") && dest_list.contains("finished") {
-            let task_to_move = doing.clone().iter().nth(idx).unwrap().clone();
-            doing.remove(idx);
-            finished.push_back(task_to_move);
+            if let Some(position) = doing.iter().position(|t| t.index == idx) {
+                finished.push_back(doing.clone().iter().filter(|tt| tt.index == idx).next().unwrap().clone());
+                doing.remove(position);
+            }
         } else if source_list.contains("doing") && dest_list.contains("todo") {
-            let task_to_move = doing.clone().iter().nth(idx).unwrap().clone();
-            doing.remove(idx);
-            todo.push_back(task_to_move);
+            if let Some(position) = doing.iter().position(|t| t.index == idx) {
+                todo.push_back(doing.clone().iter().filter(|tt| tt.index == idx).next().unwrap().clone());
+                doing.remove(position);
+            }
         } else if source_list.contains("finished") && dest_list.contains("doing") {
-            let task_to_move = finished.clone().iter().nth(idx).unwrap().clone();
-            finished.remove(idx);
-            doing.push_back(task_to_move);
+            if let Some(position) = finished.iter().position(|t| t.index == idx) {
+                doing.push_back(finished.clone().iter().filter(|tt| tt.index == idx).next().unwrap().clone());
+                finished.remove(position);
+            }
         } else if source_list.contains("finished") && dest_list.contains("todo") {
-            let task_to_move = finished.clone().iter().nth(idx).unwrap().clone();
-            finished.remove(idx);
-            todo.push_back(task_to_move);
+            if let Some(position) = finished.iter().position(|t| t.index == idx) {
+                todo.push_back(finished.clone().iter().filter(|tt| tt.index == idx).next().unwrap().clone());
+                finished.remove(position);
+            }
         } else {
             println!("Invalid options to move task {} {} {}", idx, source_list, dest_list);
         }
